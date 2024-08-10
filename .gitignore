@@ -1,0 +1,6 @@
+*.ipynb
+/.ipynb_checkpoints
+data
+licy.py
+data_ops_experiment.py
+/.idea
