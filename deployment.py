@@ -26,6 +26,11 @@ from langchain_core.chat_history import (
 )
 from langchain_core.runnables.history import RunnableWithMessageHistory
 
+__import__('pysqlite3')
+import sys
+
+sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+
 # Ignore all non-failing warnings
 warnings.filterwarnings("ignore")
 
