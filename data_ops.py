@@ -9,7 +9,6 @@ from langchain_text_splitters.character import (
     CharacterTextSplitter,
 )
 
-from langchain_community.llms import FakeListLLM
 from langchain_community.embeddings import (
     OpenAIEmbeddings,
     HuggingFaceEmbeddings,
@@ -26,7 +25,7 @@ from functools import lru_cache
 from langchain.retrievers.document_compressors import EmbeddingsFilter
 from langchain.retrievers import ContextualCompressionRetriever
 
-from langchain.document_loaders import (
+from langchain_community.document_loaders import (
     PDFMinerLoader,
     PyPDFDirectoryLoader,
     Docx2txtLoader,
@@ -291,40 +290,3 @@ class DocumentProcessor:
             )
             for q in queries
         ]
-
-
-if __name__ == "__main__":
-    processor = DocumentProcessor(as_retriever=False, compress_retriever=True)
-    loaded_document = processor.load_pdf("data/cv.pdf")
-    # split_documents = processor.split_documents_v2(loaded_document)
-    split_documents = processor.generate_chunks_from_directory("./data")
-    generated_embeddings = processor.generate_embeddings(split_documents)
-
-    # print(loaded_document.get_content(metadata_mode = MetadataMode.EMBED))
-    # print(loaded_document.get_content(metadata_mode=MetadataMode.LLM))
-    #
-    # print([d for d in dir(loaded_document) if "page" in d])
-    #
-    # print(processor.persist_embeddings(loaded_document, metadata_mode=MetadataMode.LLM))
-
-    print(f"Number of documents: {len(loaded_document)}")
-    print(loaded_document)
-
-    print(f"Number of split documents: {len(split_documents)}")
-    print(split_documents)
-
-    print(f"Number of generated embeddings: {len(generated_embeddings)}")
-    # print(generated_embeddings)
-
-    resulting_embeddings = processor.generate_embeddings(documents=["Nevermore"])
-    print(len(resulting_embeddings[-1]))
-
-
-    # TODO: Comment all these out
-    # processor = DocumentProcessor(as_retriever=False, compress_retriever=False)
-    #
-    # loader = processor.document_loader
-    #
-    # chunks = processor.load_documents_from_directory("./data")
-    #
-    # print("After processing:", len(chunks))
