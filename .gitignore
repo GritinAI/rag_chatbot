@@ -4,4 +4,6 @@ __pycache__/
 data
 /.idea
 code_archive
+vector_database
+*test*.py
 .env
