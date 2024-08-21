@@ -11,22 +11,14 @@ import warnings
 
 from data_ops import DocumentProcessor
 
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_ollama import ChatOllama
-from langchain_core.output_parsers import StrOutputParser
-from langchain_community.memory.motorhead_memory import MotorheadMemory
-from langchain.document_loaders import PDFMinerLoader, PyPDFDirectoryLoader
-
-
-from langchain_community.chat_message_histories import ChatMessageHistory
-from langchain.memory import ConversationSummaryBufferMemory, ConversationSummaryMemory
+from langchain.memory import ConversationSummaryMemory
 from langchain.chains import ConversationChain
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langchain_core.prompts import (
     ChatPromptTemplate,
     HumanMessagePromptTemplate,
     MessagesPlaceholder,
-
 )
 from langchain_core.chat_history import (
     BaseChatMessageHistory,
