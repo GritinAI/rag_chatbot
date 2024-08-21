@@ -1,3 +1,4 @@
+pip>=24.2
 numpy<1.26
 langchain==0.2.12
 langchain-community==0.2.11
