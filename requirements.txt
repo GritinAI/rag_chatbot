@@ -9,7 +9,6 @@ streamlit-chat
 torch
 ujson
 pypdf
-sqlite
 transformers
 sentence-transformers
 bitsandbytes
