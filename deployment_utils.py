@@ -11,9 +11,13 @@ from dotenv import load_dotenv
 #     os.environ["HUGGINGFACEHUB_API_TOKEN"] = getpass.getpass("Enter your token: ")
 
 
-load_dotenv(dotenv_path='.env')
+load_dotenv(dotenv_path=".env")
 
-from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint, HuggingFacePipeline
+from langchain_huggingface import (
+    ChatHuggingFace,
+    HuggingFaceEndpoint,
+    HuggingFacePipeline,
+)
 
 from langchain_core.prompts import PromptTemplate
 from langchain.chains import LLMChain

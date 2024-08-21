@@ -26,10 +26,10 @@ from langchain_core.chat_history import (
 )
 from langchain_core.runnables.history import RunnableWithMessageHistory
 
-__import__('pysqlite3')
+__import__("pysqlite3")
 import sys
 
-sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
 
 # Ignore all non-failing warnings
 warnings.filterwarnings("ignore")
@@ -39,11 +39,11 @@ st.set_page_config(
     page_title="Education Chatbot",
     page_icon=":parrot:",
     initial_sidebar_state="auto",
-    layout='wide',
+    layout="wide",
 )
 
 with open("assets/style.css") as css_file:
-    css_style = f'<style>{css_file.read()}</style>'
+    css_style = f"<style>{css_file.read()}</style>"
 
     st.markdown(css_style, unsafe_allow_html=True)
 
@@ -59,7 +59,6 @@ with st.sidebar:
         width=120,
         use_column_width=True,
     )
-
 
 
 ########################################
@@ -98,6 +97,7 @@ def generate_prompt_template_v1():
 
     return prompt
 
+
 def generate_prompt_template_from_template():
     template = """Question: {question}
 
@@ -127,6 +127,7 @@ def generate_prompt_template(version="messages"):
 
     return prompt
 
+
 if "store" not in st.session_state:
     st.session_state.store = {}
 
@@ -140,13 +141,15 @@ def get_session_history(session_id: str) -> BaseChatMessageHistory:
 @st.cache_resource
 def load_retrieval_system(as_retriever=False, compress_retriever=False):
     """Load trained stenosis detection model"""
-    processor = DocumentProcessor(as_retriever=as_retriever, compress_retriever=compress_retriever)
+    processor = DocumentProcessor(
+        as_retriever=as_retriever, compress_retriever=compress_retriever
+    )
 
     return processor
 
 
 @st.cache_resource
-def load_llm(model_name="phi3:mini", temperature=.5):
+def load_llm(model_name="phi3:mini", temperature=0.5):
     """Load trained stenosis detection model"""
 
     model = ChatOllama(
@@ -159,15 +162,13 @@ def load_llm(model_name="phi3:mini", temperature=.5):
 
 @st.cache_resource
 def generate_chain(_model):
-    return generate_prompt_template() | _model #| StrOutputParser()
+    return generate_prompt_template() | _model  # | StrOutputParser()
 
 
 def generate_final_conversation_chain_v1(llm):
     # llm_chain = generate_chain(_model=llm)
     conversation_with_summary = ConversationChain(
-        llm=llm,
-        memory=ConversationSummaryMemory(llm=llm),
-        verbose=True
+        llm=llm, memory=ConversationSummaryMemory(llm=llm), verbose=True
     )
     return conversation_with_summary
 
@@ -179,7 +180,7 @@ def generate_final_conversation_chain(llm):
     return stateful_llm_chain
 
 
-def display_chat_history_v1(history=[], user_avatar="personas", ai_avatar = None):
+def display_chat_history_v1(history=[], user_avatar="personas", ai_avatar=None):
     for i, message_ in enumerate(history[1:]):
         if i % 2 == 0:
             is_user = True
@@ -195,14 +196,20 @@ def display_chat_history_v1(history=[], user_avatar="personas", ai_avatar = None
     return
 
 
-def display_chat_history(history=[], user_avatar="personas", ai_avatar=None, reverse_history=True):
+def display_chat_history(
+    history=[], user_avatar="personas", ai_avatar=None, reverse_history=True
+):
     history_ = history[1:]
 
     if reverse_history:
         history_ = history[::-1]
 
     chat_pairs = [
-        ((history_[i+1], history_[i]) if reverse_history else (history_[i], history_[i + 1]))
+        (
+            (history_[i + 1], history_[i])
+            if reverse_history
+            else (history_[i], history_[i + 1])
+        )
         for i in range(0, len(history_), 2)
     ]
 
@@ -264,11 +271,14 @@ def combine_query_and_contexts(query, contexts):
 processor = load_retrieval_system()
 
 choices = ["Data Uploads", "Chatbot"]
-choice = st.radio(label='', options=choices, horizontal=True)
-#
-# with st.sidebar:
-#     tabs = st.tabs(tabs = ["Data Uploads", "Chatbot"])
-#     tab_1, tab_2 = tabs
+choice = st.radio(
+    label="user_option",
+    options=choices,
+    index=0,
+    horizontal=True,
+    label_visibility="hidden",
+)
+
 
 if choice == choices[0]:
     if "processor" not in st.session_state:
@@ -295,7 +305,9 @@ if choice == choices[0]:
 
     if uploaded_files:
         st.divider()
-        st.write(f"Generating vector database... adding to previous {old_num_chunks} documents...")
+        st.write(
+            f"Generating vector database... adding to previous {old_num_chunks} documents..."
+        )
         st.divider()
 
     for i, doc in enumerate(uploaded_files, start=1):
@@ -324,7 +336,7 @@ elif choice == choices[1]:
             "gemma:2b",
             "gemma2:2b",
         ],
-        index=1
+        index=1,
     )
 
     # Pull chosen model to VM via Ollama
@@ -374,7 +386,7 @@ elif choice == choices[1]:
         st.write("RAG failed!")
         st.divider()
 
-        results = ''
+        results = ""
         final_query = user_query
 
     # final_query = combine_query_and_contexts(user_query, results)[0]
@@ -391,7 +403,7 @@ elif choice == choices[1]:
         else:
             inputs = [human_message]
 
-        generated_output = final_llm_chain.invoke(inputs, config = CONFIG)
+        generated_output = final_llm_chain.invoke(inputs, config=CONFIG)
 
     # TODO: Uncomment this for RAG
     # generated_text = generated_output.content.replace(final_query, "")
@@ -407,7 +419,4 @@ elif choice == choices[1]:
 
     history = st.session_state.get("messages", []).copy()
 
-    display_chat_history(
-        history=history,
-        reverse_history=False
-    )
+    display_chat_history(history=history, reverse_history=False)

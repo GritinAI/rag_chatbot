@@ -34,28 +34,24 @@ from langchain_community.document_loaders import (
 )
 
 
-__all__ = [
-    "DocumentProcessor",
-    "DocumentLoader"
-]
+__all__ = ["DocumentProcessor", "DocumentLoader"]
 
 
 class DocumentLoader:
     def __init__(self, chunk_size=1000, chunk_overlap=10):
 
-        self.chunk_size=chunk_size
-        self.chunk_overlap=chunk_overlap
+        self.chunk_size = chunk_size
+        self.chunk_overlap = chunk_overlap
 
         self._loaders = {
             ".docx": Docx2txtLoader,
             ".doc": Docx2txtLoader,
             ".pdf": PDFMinerLoader,
-            ".csv": TextLoader
+            ".csv": TextLoader,
         }
 
         self.text_splitter = CharacterTextSplitter(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap
+            chunk_size=chunk_size, chunk_overlap=chunk_overlap
         )
 
     def load_file(self, file_path):
@@ -69,7 +65,7 @@ class DocumentLoader:
         file_list = os.listdir(file_directory)
 
         file_paths = [os.path.join(file_directory, f) for f in file_list]
-        _ = [chunks:=chunks+self.load_file(f) for f in file_paths]
+        _ = [chunks := chunks + self.load_file(f) for f in file_paths]
 
         print("While processing:", len(chunks))
 
@@ -134,8 +130,7 @@ class DocumentProcessor:
         self.embedder = [embedding_model, embedding_class]
 
         self.document_loader = DocumentLoader(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap
+            chunk_size=chunk_size, chunk_overlap=chunk_overlap
         )
 
         if os.path.exists(self.PERSIST_DIRECTORY):
@@ -207,12 +202,7 @@ class DocumentProcessor:
 
     # @lru_cache(maxsize=128)
     def generate_embeddings(
-        self,
-        documents,
-        search_type="mmr",
-        k=2,
-        fetch_k=4,
-        update_database=True
+        self, documents, search_type="mmr", k=2, fetch_k=4, update_database=True
     ):
         if self.vector_database is None:
             self.vector_database = self._configure_vector_database(
@@ -226,7 +216,6 @@ class DocumentProcessor:
             self._update_vector_database(documents=documents)
 
         return self._embeddings_from_documents(documents=documents)
-
 
     def _update_vector_database(self, documents):
         try:
