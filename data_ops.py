@@ -1,28 +1,110 @@
 # -*- coding: utf-8 -*-
 
-import PyPDF3 as pypdf
+import os
 
 from transformers import GPT2TokenizerFast
-# from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_text_splitters.character import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import HuggingFaceEmbeddings, CohereEmbeddings
 
-from langchain_community.vectorstores import FAISS
+from langchain_text_splitters.character import (
+    RecursiveCharacterTextSplitter,
+    CharacterTextSplitter,
+)
 
-from llama_index.readers.file import PDFReader
-from llama_index.core.schema import MetadataMode
+from langchain_community.llms import FakeListLLM
+from langchain_community.embeddings import (
+    OpenAIEmbeddings,
+    HuggingFaceEmbeddings,
+    CohereEmbeddings,
+)
+from langchain_community.vectorstores import FAISS, Chroma, DocArrayInMemorySearch
+
+# TODO: Replace file reader from llama-index with one from langchain
+from langchain_community.document_loaders import PyPDFLoader, DirectoryLoader
 
 from typing import List, Tuple, Sequence, Callable, Optional, Dict
-from langchain.docstore.document import Document
+from langchain.schema import Document
+
+from functools import lru_cache
+
+from langchain.retrievers.document_compressors import EmbeddingsFilter
+from langchain.retrievers import ContextualCompressionRetriever
+
+from langchain.document_loaders import (
+    PDFMinerLoader,
+    PyPDFDirectoryLoader,
+    Docx2txtLoader,
+    TextLoader,
+    DirectoryLoader,
+)
 
 
 __all__ = [
     "DocumentProcessor",
-    "load_pdf",
+    "DocumentLoader"
 ]
 
 
+class DocumentLoader:
+    def __init__(self, chunk_size=1000, chunk_overlap=10):
+        self.pdfloader = PDFMinerLoader
+        self.pdf_dir_loader = PyPDFDirectoryLoader
+
+        self.chunk_size=chunk_size
+        self.chunk_overlap=chunk_overlap
+
+        self._loaders = {
+            ".docx": Docx2txtLoader,
+            ".doc": Docx2txtLoader,
+            ".pdf": PyPDFLoader,
+            ".csv": TextLoader
+        }
+
+        self.text_splitter = CharacterTextSplitter(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap
+        )
+
+    def load_file(self, file_path):
+        ext = os.path.splitext(file_path)[-1]
+        return self._loaders.get(ext, TextLoader)(file_path).load()
+
+    @lru_cache(maxsize=128)
+    def from_directory(self, file_directory):
+        chunks = []
+
+        file_list = os.listdir(file_directory)
+
+        file_paths = [os.path.join(file_directory, f) for f in file_list]
+        _ = [chunks:=chunks+self.load_file(f) for f in file_paths]
+
+        print("While processing:", len(chunks))
+
+        split_documents = self.text_splitter.split_documents(chunks)
+
+        print("After splitting:", len(split_documents))
+
+        return split_documents
+
+    def from_files(self, file_paths, base_dir=None):
+        if base_dir is not None:
+            file_paths = [os.path.join(base_dir, f) for f in file_paths]
+
+        chunks = []
+
+        _ = [chunks := chunks + self.load_file(f) for f in file_paths]
+
+        print("While processing:", len(chunks))
+
+        split_documents = self.text_splitter.split_documents(chunks)
+
+        print("After splitting:", len(split_documents))
+
+        return split_documents
+
+
 class DocumentProcessor:
+    PERSIST_DIRECTORY = "./vector_database/"
+    num_chunks = 0
+
     def __init__(
         self,
         tokenizer_class: Callable = GPT2TokenizerFast,
@@ -32,37 +114,50 @@ class DocumentProcessor:
         embedding_model: str = "msmarco-bert-base-dot-v5",
         embedding_class: Callable = HuggingFaceEmbeddings,
         text_splitter_class: Callable = RecursiveCharacterTextSplitter,
-        database_class: Callable = FAISS,
+        database_class: Callable = Chroma,
         chunks: bool = False,
-        as_retreiver: bool = False,
+        as_retriever: bool = False,
+        compress_retriever: bool = False,
     ):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.database_class = database_class
-        self.as_retreiver = as_retreiver
+        self.as_retriever = as_retriever
+        self.compress_retriever = compress_retriever
 
         self.chunks = chunks
 
         self.text_tokenizer = None
         self.text_splitter = None
         self.text_embedder = None
-        self.vector_database = None
 
-        self.pdf_reader = PDFReader(return_full_document=True)
+        # self.pdf_reader = PDFReader(return_full_document=True)
+        self.pdf_reader = None
 
         self.tokenizer = [tokenizer_model, tokenizer_class]
         self.splitter = [text_splitter_class, chunk_size, chunk_overlap, None]
         self.embedder = [embedding_model, embedding_class]
 
-    def load_pdf(self, file_path: str):
-        return self.pdf_reader.load_data(file=file_path)[0]
+        self.document_loader = DocumentLoader(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap
+        )
+
+        if os.path.exists(self.PERSIST_DIRECTORY):
+            self.vector_database = Chroma(
+                persist_directory=self.PERSIST_DIRECTORY,
+                embedding_function=self.embedder,
+            )
+            print(f"Vector database loaded from {self.PERSIST_DIRECTORY}!")
+        else:
+            self.vector_database = None
 
     @property
     def tokenizer(self):
         return self.text_tokenizer
 
     @tokenizer.setter
-    def tokenizer(self, tokenizer_info: List[str, Callable]):
+    def tokenizer(self, tokenizer_info):
         tokenizer_model, tokenizer_class = tokenizer_info
         self.text_tokenizer = tokenizer_class.from_pretrained(tokenizer_model)
         return
@@ -72,7 +167,7 @@ class DocumentProcessor:
         return self.text_splitter
 
     @splitter.setter
-    def splitter(self, splitter_info: List[Callable, int, int, Callable]):
+    def splitter(self, splitter_info):
         text_splitter_class, chunk_size, chunk_overlap, tokenizer = splitter_info
         if tokenizer is None:
             tokenizer = self.text_tokenizer
@@ -87,30 +182,19 @@ class DocumentProcessor:
         return self.text_embedder
 
     @embedder.setter
-    def embedder(self, embedder_info: List[str, Callable]):
+    def embedder(self, embedder_info):
         embedding_model, embedding_class = embedder_info
         self.text_embedder = embedding_class(model_name=embedding_model)
         return
 
-    def split_document(self, document: str | Document):
-        document_ = document.page_content if isinstance(document, Document) else document
-        document_chunks = self.splitter.split_text(document_)
-        # return document_chunks
-        return self.splitter.create_documents(document_chunks)
+    def generate_chunks_from_directory(self, directory):
+        return self.document_loader.from_directory(directory)
 
-    # def split_documents(self, documents):
-    #     return self.splitter.create_documents(documents)
+    def generate_chunks_from_file(self, file_path):
+        return self.document_loader.load_file(file_path)
 
-    def split_documents(self, documents: Sequence[str | Document]):
-        # documents_ = [(d.page_content if isinstance(d, Document) else d) for d in documents]
-        return [(self.splitter.create_documents([d])[0] if not isinstance(d, Document) else d) for d in documents]
-
-    def split_text(self, documents):
-        return (
-            self.split_documents(documents=documents)
-            if self.chunks
-            else self.split_document(document=documents)
-        )
+    def generate_chunks_from_files(self, file_paths, base_dir=None):
+        return self.document_loader.from_files(file_paths=file_paths, base_dir=base_dir)
 
     def embed_chunks(self, chunks):
         return [self.embed_chunk(chunk) for chunk in chunks]
@@ -120,66 +204,83 @@ class DocumentProcessor:
             chunk.page_content if not isinstance(chunk, str) else chunk
         )
 
-    def create_embeddings(self, documents):
-        self.splitter.create_embeddings(documents)
+    def _embeddings_from_documents(self, documents):
+        documents_ = [
+            (p.page_content if isinstance(p, Document) else p) for p in documents
+        ]
+        return self.text_embedder.embed_documents(documents_)
 
-    def persist_embeddings(self, documents: Document | Sequence[str | Document], metadata_mode: Callable = MetadataMode.EMBED):
-        if isinstance(documents, list):
-            documents_ = [d.get_content(metadata_mode=metadata_mode) for d in documents]
-        else:
-            documents_ = documents.get_content(metadata_mode=metadata_mode)
+    # @lru_cache(maxsize=128)
+    def generate_embeddings(
+        self,
+        documents,
+        search_type="mmr",
+        k=2,
+        fetch_k=4,
+        update_database=True
+    ):
+        if self.vector_database is None:
+            self.vector_database = self._configure_vector_database(
+                documents=documents,
+                search_type=search_type,
+                k=k,
+                fetch_k=fetch_k,
+            )
 
-        documents_ = self.split_text(documents=documents_)
-        embeddings = self.embed_chunks(documents_)
+        if update_database:
+            self._update_vector_database(documents=documents)
 
-        # print("Number of documents:", len(documents_))
-        # print("Number of embeddings:", len(embeddings))
-        # print(embeddings)
+        return self._embeddings_from_documents(documents=documents)
 
-        print(dir(self.text_embedder))
 
-        print(type(documents_[0]), dir(documents_[0]))
+    def _update_vector_database(self, documents):
+        try:
+            self.vector_database.add_documents(documents=documents)
+            self.num_chunks += 1
+            exit_code = 0
+        except:
+            exit_code = 1
+            pass
 
-        # print(documents[0])
+        return exit_code
 
-        self.vector_database = self.database_class.from_documents(documents=documents_, embedding=embeddings)
+    def _configure_vector_database(
+        self, documents, search_type="mmr", k=2, fetch_k=4, similarity_threshold=0.76
+    ):
+        vector_database = Chroma.from_documents(
+            documents=documents,
+            embedding=self.embedder,
+            persist_directory=self.PERSIST_DIRECTORY,
+        )
 
-        if self.as_retreiver:
-            self.vector_database = self.vector_database.as_retreiver()
+        if self.as_retriever:
+            vector_database = vector_database.as_retriever(
+                search_type=search_type, search_kwargs={"k": k, "fetch_k": fetch_k}
+            )
 
-        print("Embeddings generated and persisted.")
+            if self.compress_retriever:
+                embeddings_filter = EmbeddingsFilter(
+                    embeddings=self.embedder, similarity_threshold=similarity_threshold
+                )
+                return ContextualCompressionRetriever(
+                    base_compressor=embeddings_filter, base_retriever=vector_database
+                )
 
-        return
+        return vector_database
 
-    # def persist_embeddings(self, documents, embeddings):
-    #     self.vector_database = self.database_class.from_documents(documents, embeddings)
-
-    #     if self.as_retreiver:
-    #         self.vector_database = self.vector_database.as_retreiver()
-
-    #     print("Embeddings generated and persisted.")
-
-    #     return
-
-    # def process_documents(self, documents):
-    #     documents = self.split_text(documents=documents)
-    #     embeddings = self.embed_chunks(documents)
-        
-    #     self.persist_embeddings(documents, embeddings)
-
-    #     return
-
-    def simple_similarity_search(self, query):
-        return self.vector_database.similarity_search(query)
+    def simple_similarity_search(self, query, k=4):
+        return self.vector_database.similarity_search(query, k=k)
 
     def relevance_search(self, query, top_k=1, total_k=10):
         return self.vector_database.max_marginal_relevance_search(
             query, k=top_k, fetch_k=total_k
         )
 
-    def similarity_search(self, query, mode=0, top_k=1, total_k=10):
+    def similarity_search(self, query, mode=0, k=4, top_k=1, total_k=10):
+        """Perform similarity search in different modes. Mode 0 for simple search. Model 1 for relevance similarity search."""
+        assert mode in range(0, 2), "Pass in `mode` in [0, 1]."
         if mode == 0:
-            results = self.simple_similarity_search(query=query)
+            results = self.simple_similarity_search(query=query, k=k)
         elif mode == 1:
             results = self.relevance_search(query=query, top_k=top_k, total_k=total_k)
         else:
@@ -187,29 +288,47 @@ class DocumentProcessor:
 
         return results
 
-    def paired_similarity_search(self, queries, mode=0, top_k=1, total_k=10):
+    def paired_similarity_search(self, queries, mode=0, k=4, top_k=1, total_k=10):
         return [
-            self.similarity_search(query=q, mode=mode, top_k=top_k, total_k=total_k)
+            self.similarity_search(
+                query=q, mode=mode, k=k, top_k=top_k, total_k=total_k
+            )
             for q in queries
         ]
 
 
-def load_pdf(fpath):
-    with open(fpath, "rb") as f:
-        pdf = pypdf.PdfFileReader(f)
-        text = str()
-        for page_num in range(pdf.numPages):
-            page = pdf.getPage(page_num)
-            text = text + " " + page.extractText()
-
-    return text
-
-
 if __name__ == "__main__":
-    processor = DocumentProcessor()
-    loaded_document = processor.load_pdf("data/file.pdf")
+    processor = DocumentProcessor(as_retriever=False, compress_retriever=True)
+    loaded_document = processor.load_pdf("data/cv.pdf")
+    # split_documents = processor.split_documents_v2(loaded_document)
+    split_documents = processor.generate_chunks_from_directory("./data")
+    generated_embeddings = processor.generate_embeddings(split_documents)
+
     # print(loaded_document.get_content(metadata_mode = MetadataMode.EMBED))
     # print(loaded_document.get_content(metadata_mode=MetadataMode.LLM))
-    print([d for d in dir(loaded_document) if "page" in d])
+    #
+    # print([d for d in dir(loaded_document) if "page" in d])
+    #
+    # print(processor.persist_embeddings(loaded_document, metadata_mode=MetadataMode.LLM))
 
-    print(processor.persist_embeddings(loaded_document, metadata_mode=MetadataMode.LLM))
+    print(f"Number of documents: {len(loaded_document)}")
+    print(loaded_document)
+
+    print(f"Number of split documents: {len(split_documents)}")
+    print(split_documents)
+
+    print(f"Number of generated embeddings: {len(generated_embeddings)}")
+    # print(generated_embeddings)
+
+    resulting_embeddings = processor.generate_embeddings(documents=["Nevermore"])
+    print(len(resulting_embeddings[-1]))
+
+
+    # TODO: Comment all these out
+    # processor = DocumentProcessor(as_retriever=False, compress_retriever=False)
+    #
+    # loader = processor.document_loader
+    #
+    # chunks = processor.load_documents_from_directory("./data")
+    #
+    # print("After processing:", len(chunks))

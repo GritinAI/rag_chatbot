@@ -1,6 +1,7 @@
 *.ipynb
 /.ipynb_checkpoints
+__pycache__/
 data
-licy.py
-data_ops_experiment.py
 /.idea
+code_archive
+.env
