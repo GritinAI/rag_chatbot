@@ -10,7 +10,7 @@ streamlit-chat==0.1.1
 torch==2.4.0
 ujson==5.9.0
 pypdf
-sqlite3>=3.46.0
+sqlite3
 transformers>=4.44.0
 sentence-transformers==3.0.1
 bitsandbytes>=0.43
