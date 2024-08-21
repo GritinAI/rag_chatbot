@@ -18,8 +18,6 @@ from langchain_community.embeddings import (
 from langchain_community.vectorstores import FAISS, Chroma, DocArrayInMemorySearch
 
 # TODO: Replace file reader from llama-index with one from langchain
-from langchain_community.document_loaders import PyPDFLoader, DirectoryLoader
-
 from typing import List, Tuple, Sequence, Callable, Optional, Dict
 from langchain.schema import Document
 
@@ -45,8 +43,6 @@ __all__ = [
 
 class DocumentLoader:
     def __init__(self, chunk_size=1000, chunk_overlap=10):
-        self.pdfloader = PDFMinerLoader
-        self.pdf_dir_loader = PyPDFDirectoryLoader
 
         self.chunk_size=chunk_size
         self.chunk_overlap=chunk_overlap
@@ -54,7 +50,7 @@ class DocumentLoader:
         self._loaders = {
             ".docx": Docx2txtLoader,
             ".doc": Docx2txtLoader,
-            ".pdf": PyPDFLoader,
+            ".pdf": PDFMinerLoader,
             ".csv": TextLoader
         }
 
